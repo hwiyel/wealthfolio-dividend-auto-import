@@ -1,0 +1,17 @@
+{
+  "id": "dividend-assistant",
+  "name": "Dividend Assistant",
+  "version": "1.0.0",
+  "main": "dist/addon.js",
+  "description": "Automatically detects missing dividend entries based on your holdings and ex-dividend dates.",
+  "author": "hwiyel",
+  "sdkVersion": "1.0.0",
+  "permissions": [
+    "accounts.getAll",
+    "activities.getAll",
+    "activities.saveMany",
+    "market.getDividends",
+    "sidebar.addItem",
+    "router.add"
+  ]
+}

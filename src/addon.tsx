@@ -1,0 +1,616 @@
+/**
+ * addon.tsx — Dividend Assistant
+ *
+ * UI flow:
+ *   Settings bar (account filter, date range, date preference)
+ *   → "Scan" button
+ *   → Table of missing dividends with per-row checkbox
+ *   → "Log Selected" button → ctx.api.activities.saveMany()
+ */
+
+import React, { useState, useCallback } from 'react';
+import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { AddonContext, Activity } from '@wealthfolio/addon-sdk';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Checkbox,
+  EmptyPlaceholder,
+  Icons,
+  Input,
+  Page,
+  PageContent,
+  PageHeader,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@wealthfolio/ui';
+
+import {
+  computeMissingDividends,
+  toActivityPayload,
+  type MissingDividend,
+  type DividendEvent,
+} from './dividendLogic';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+function oneYearAgoStr() {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - 1);
+  return d.toISOString().slice(0, 10);
+}
+function twoYearsAgoStr() {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - 2);
+  return d.toISOString().slice(0, 10);
+}
+function fmt(n: number, currency: string) {
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(n);
+}
+function fmtDate(iso: string) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
+  const queryClient = useQueryClient();
+
+  // ── Filter state ──
+  const [fromDate, setFromDate] = useState(twoYearsAgoStr());
+  const [toDate, setToDate] = useState(todayStr());
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
+  const [usePaymentDate, setUsePaymentDate] = useState(false);
+
+  // ── Scan / result state ──
+  const [missing, setMissing] = useState<MissingDividend[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [scanned, setScanned] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // ── Load accounts ──
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: () => ctx.api.accounts.getAll(),
+  });
+
+  // ── Scan logic ──
+  const handleScan = useCallback(async () => {
+    setScanning(true);
+    setScanError(null);
+    setMissing([]);
+    setSelected(new Set());
+
+    try {
+      // 1. Load all activities
+      const allActivities: Activity[] = await ctx.api.activities.getAll();
+
+      // 2. Find unique symbols from BUY/SELL in the selected account(s)
+      const targetAccounts =
+        selectedAccountId === 'ALL'
+          ? accounts
+          : accounts.filter((a) => a.id === selectedAccountId);
+
+      const targetIds = new Set(targetAccounts.map((a) => a.id));
+      
+      const filteredActivities = allActivities.filter(
+        (a) =>
+          targetIds.has(a.accountId) &&
+          (a.activityType === 'BUY' || a.activityType === 'SELL') &&
+          ((a as any).assetSymbol || (a as any).symbol)
+      );
+      
+      const symbols = [
+        ...new Set(
+          filteredActivities
+            .map((a) => ((a as any).assetSymbol || (a as any).symbol)!)
+            .filter(Boolean)
+        ),
+      ];
+
+      if (symbols.length === 0) {
+        setMissing([]);
+        setScanned(true);
+        return;
+      }
+
+      // 3. Fetch dividend calendars for each symbol
+      const dividendsBySymbol = new Map<string, DividendEvent[]>();
+
+      await Promise.allSettled(
+        symbols.map(async (symbol) => {
+          try {
+            // Convert Korean stock symbols for Yahoo Finance
+            let yahooSymbol = symbol;
+            if (/^\d{6}$/.test(symbol)) {
+              yahooSymbol = `${symbol}.KS`;
+            }
+            
+            let events = null;
+            
+            // Try different API paths
+            if (ctx.api.market && typeof (ctx.api.market as any).fetchDividends === 'function') {
+              events = await (ctx.api.market as any).fetchDividends(yahooSymbol, fromDate, toDate);
+            } else if (typeof (ctx.api as any).fetchDividends === 'function') {
+              events = await (ctx.api as any).fetchDividends(yahooSymbol, fromDate, toDate);
+            }
+            
+            if (Array.isArray(events) && events.length > 0) {
+              // Map the API response to DividendEvent format
+              const mappedEvents = events.map((e: any) => {
+                // Convert timestamp to YYYY-MM-DD if needed
+                let exDate = e.exDate || e.date;
+                if (typeof exDate === 'number') {
+                  exDate = new Date(exDate * 1000).toISOString().slice(0, 10);
+                }
+                
+                let paymentDate = e.paymentDate;
+                if (typeof paymentDate === 'number') {
+                  paymentDate = new Date(paymentDate * 1000).toISOString().slice(0, 10);
+                }
+                
+                // Korean stocks should be KRW, others default to USD
+                const currency = yahooSymbol.endsWith('.KS') ? 'KRW' : (e.currency || 'USD');
+                
+                return {
+                  exDate,
+                  paymentDate,
+                  amount: e.amount || e.dividend,
+                  currency,
+                };
+              });
+              dividendsBySymbol.set(symbol, mappedEvents as DividendEvent[]);
+            }
+          } catch (error) {
+            // Symbol may not have dividend data — skip silently
+          }
+        })
+      );
+
+      // 4. Compute missing
+      const results = computeMissingDividends(
+        allActivities,
+        targetAccounts.map((a) => ({ id: a.id, name: a.name })),
+        dividendsBySymbol,
+        fromDate,
+        toDate
+      );
+
+      setMissing(results);
+      // Pre-select all
+      setSelected(new Set(results.map((r) => r.key)));
+      setScanned(true);
+    } catch (err: any) {
+      setScanError(err?.message ?? 'Unknown error during scan');
+    } finally {
+      setScanning(false);
+    }
+  }, [accounts, selectedAccountId, fromDate, toDate, ctx]);
+
+  // ── Log selected dividends ──
+  const logMutation = useMutation({
+    mutationFn: async (toLog: MissingDividend[]) => {
+      const payloads = toLog.map((d) =>
+        toActivityPayload(d, usePaymentDate)
+      );
+      
+      // Check import first (only activities, no accountId)
+      const checked = await (ctx.api.activities as any).checkImport(payloads);
+      
+      // Then import
+      const imported = await (ctx.api.activities as any).import(checked);
+      
+      return imported;
+    },
+    onSuccess: () => {
+      ctx.api.logger.info('Dividend Assistant: activities saved');
+      // Invalidate activities cache so the Activities page reflects changes
+      queryClient.invalidateQueries({ queryKey: ['activities'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      // Remove logged items from the list
+      setMissing((prev) => prev.filter((d) => !selected.has(d.key)));
+      setSelected(new Set());
+    },
+    onError: (err: any) => {
+      setScanError(err?.message ?? 'Failed to save activities');
+    },
+  });
+
+  const handleLogSelected = () => {
+    const toLog = missing.filter((d) => selected.has(d.key));
+    if (toLog.length === 0) return;
+    logMutation.mutate(toLog);
+  };
+
+  // ── Row selection helpers ──
+  const toggleRow = (key: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+
+  const toggleAll = () => {
+    if (selected.size === missing.length) setSelected(new Set());
+    else setSelected(new Set(missing.map((d) => d.key)));
+  };
+
+  const selectedTotal = missing
+    .filter((d) => selected.has(d.key))
+    .reduce((sum, d) => sum + d.totalAmount, 0);
+
+  // Group totals by currency for meaningful display
+  const selectedTotalsByCurrency = missing
+    .filter((d) => selected.has(d.key))
+    .reduce((acc, d) => {
+      if (!acc[d.currency]) {
+        acc[d.currency] = 0;
+      }
+      acc[d.currency] += d.totalAmount;
+      return acc;
+    }, {} as Record<string, number>);
+
+  // Filter dividends by search term
+  const filteredMissing = missing.filter((d) =>
+    d.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    d.accountName.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // ── Render ──
+  const header = (
+    <PageHeader>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-semibold sm:text-xl">Dividend Assistant</h1>
+          {scanned && <StatusBadge count={missing.length} />}
+        </div>
+        <p className="text-muted-foreground text-sm sm:text-base">
+          Detect and log missing dividend income based on your holdings.
+        </p>
+      </div>
+    </PageHeader>
+  );
+
+  return (
+    <Page>
+      {header}
+      <PageContent>
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+          {/* Filter bar */}
+          <div className="flex flex-wrap items-end gap-4 rounded-lg border bg-card p-4">
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-medium uppercase text-muted-foreground">
+                Account
+              </label>
+              <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="All accounts" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All accounts</SelectItem>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-medium uppercase text-muted-foreground">
+                From
+              </label>
+              <input
+                type="date"
+                className="min-w-[140px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={fromDate}
+                max={toDate}
+                onChange={(e) => setFromDate(e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-medium uppercase text-muted-foreground">
+                To
+              </label>
+              <input
+                type="date"
+                className="min-w-[140px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={toDate}
+                min={fromDate}
+                max={todayStr()}
+                onChange={(e) => setToDate(e.target.value)}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 pb-2">
+              <input
+                type="checkbox"
+                id="usePaymentDate"
+                checked={usePaymentDate}
+                onChange={(e) => setUsePaymentDate(e.target.checked)}
+                className="h-4 w-4 rounded border-input"
+              />
+              <label
+                htmlFor="usePaymentDate"
+                className="cursor-pointer text-sm text-muted-foreground"
+              >
+                Use payment date
+              </label>
+            </div>
+
+            <Button
+              onClick={handleScan}
+              disabled={scanning}
+              className="ml-auto"
+            >
+              {scanning ? (
+                <>
+                  <Icons.Loader className="mr-2 h-4 w-4 animate-spin" />
+                  Scanning…
+                </>
+              ) : (
+                <>
+                  <Icons.Search className="mr-2 h-4 w-4" />
+                  Scan
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Error */}
+          {scanError && (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
+              <strong>Error:</strong> {scanError}
+            </div>
+          )}
+
+          {/* Results table or empty state */}
+          {missing.length === 0 ? (
+            <div className="flex justify-center">
+              <div className="w-full max-w-lg">
+                <EmptyPlaceholder className="mt-16">
+                  <EmptyPlaceholder.Icon name="Search" />
+                  <EmptyPlaceholder.Title>
+                    {scanned ? 'No Missing Dividends' : 'Ready to Scan'}
+                  </EmptyPlaceholder.Title>
+                  <EmptyPlaceholder.Description>
+                    {scanned
+                      ? 'All your dividend income has been logged. Great job!'
+                      : 'Select an account and date range, then click Scan to find missing dividend entries.'}
+                  </EmptyPlaceholder.Description>
+                </EmptyPlaceholder>
+              </div>
+            </div>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Missing Dividends</span>
+                  <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                    <span>
+                      {selected.size} of {missing.length} selected
+                    </span>
+                    {selected.size > 0 && (
+                      <>
+                        <span>•</span>
+                        <span className="font-medium text-foreground">
+                          total:{' '}
+                          {Object.entries(selectedTotalsByCurrency)
+                            .map(([currency, amount]) => fmt(amount, currency))
+                            .join(' + ')}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col gap-4 lg:flex-row">
+                  <div className="flex-1">
+                    <Input
+                      placeholder="Search by symbol or account..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="max-w-sm"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={toggleAll}>
+                      {selected.size === filteredMissing.length ? 'Deselect all' : 'Select all'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleLogSelected}
+                      disabled={selected.size === 0 || logMutation.isPending}
+                    >
+                      {logMutation.isPending ? (
+                        <>
+                          <Icons.Loader className="mr-2 h-4 w-4 animate-spin" />
+                          Logging…
+                        </>
+                      ) : (
+                        <>
+                          <Icons.Check className="mr-2 h-4 w-4" />
+                          Log {selected.size} dividend{selected.size !== 1 ? 's' : ''}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border">
+                  <div className="max-h-[600px] overflow-auto">
+                    <table className="w-full">
+                      <thead className="bg-muted/50 sticky top-0">
+                        <tr className="border-b">
+                          <th className="w-12 p-3 text-left">
+                            <Checkbox
+                              checked={filteredMissing.length > 0 && filteredMissing.every((d) => selected.has(d.key))}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  filteredMissing.forEach((d) => setSelected((prev) => new Set([...prev, d.key])));
+                                } else {
+                                  setSelected((prev) => {
+                                    const next = new Set(prev);
+                                    filteredMissing.forEach((d) => next.delete(d.key));
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          </th>
+                          <th className="p-3 text-left">Symbol</th>
+                          <th className="p-3 text-left">Account</th>
+                          <th className="p-3 text-left">Ex-date</th>
+                          <th className="p-3 text-left">Payment date</th>
+                          <th className="p-3 text-right">Shares</th>
+                          <th className="p-3 text-right">Per share</th>
+                          <th className="p-3 text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredMissing.map((d) => (
+                          <tr
+                            key={d.key}
+                            className="hover:bg-muted/25 border-b"
+                          >
+                            <td className="p-3">
+                              <Checkbox
+                                checked={selected.has(d.key)}
+                                onCheckedChange={() => toggleRow(d.key)}
+                              />
+                            </td>
+                            <td className="p-3 font-medium">{d.symbol}</td>
+                            <td className="p-3 text-sm text-muted-foreground">
+                              {d.accountName}
+                            </td>
+                            <td className="p-3 text-sm">{fmtDate(d.exDate)}</td>
+                            <td className="p-3 text-sm text-muted-foreground">
+                              {d.paymentDate ? fmtDate(d.paymentDate) : '—'}
+                            </td>
+                            <td className="p-3 text-sm text-right">
+                              {d.sharesHeld}
+                            </td>
+                            <td className="p-3 text-sm text-right">
+                              {fmt(d.amountPerShare, d.currency)}
+                            </td>
+                            <td className="p-3 text-sm text-right font-medium text-green-600 dark:text-green-400">
+                              {fmt(d.totalAmount, d.currency)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {filteredMissing.length === 0 && missing.length > 0 && (
+                  <div className="text-muted-foreground py-8 text-center">
+                    No dividends match your search
+                  </div>
+                )}
+
+                {/* Success feedback */}
+                {logMutation.isSuccess && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
+                    <div className="flex items-center gap-2">
+                      <Icons.Check className="h-5 w-5" />
+                      <span className="font-medium">Success!</span>
+                    </div>
+                    <p className="mt-1 text-sm">
+                      Dividends logged successfully. Portfolio is being recalculated.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </PageContent>
+    </Page>
+  );
+}
+
+// ─── Status badge component ─────────────────────────────────────────────────────
+
+function StatusBadge({ count }: { count: number }) {
+  if (count === 0) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
+        0 missing
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+      {count} missing
+    </span>
+  );
+}
+
+// ─── Addon entry point ────────────────────────────────────────────────────────
+
+export default function enable(ctx: AddonContext) {
+  ctx.api.logger.info('Dividend Assistant: enabling');
+
+  const sidebarItem = ctx.sidebar.addItem({
+    id: 'dividend-assistant',
+    label: 'Dividends',
+    icon: <Icons.HandCoins className="h-5 w-5" />,
+    route: '/addons/dividend-assistant',
+    order: 50,
+  });
+
+  // Create our own QueryClient to avoid version compatibility issues
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        refetchOnWindowFocus: false,
+      },
+    },
+  });
+
+  ctx.router.add({
+    path: '/addons/dividend-assistant',
+    component: React.lazy(() =>
+      Promise.resolve({
+        default: () => (
+          <QueryClientProvider client={queryClient}>
+          <DividendAssistantPage ctx={ctx} />
+          </QueryClientProvider>
+        ),
+      })
+    ),
+  });
+
+  return {
+    disable() {
+      sidebarItem.remove();
+      ctx.api.logger.info('Dividend Assistant: disabled');
+    },
+  };
+}
