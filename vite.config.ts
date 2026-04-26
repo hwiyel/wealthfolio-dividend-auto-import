@@ -32,10 +32,5 @@ export default defineConfig({
     outDir: 'dist',
     minify: false,
     sourcemap: false,
-    watch: {
-      // Watch mode options for better hot reloading
-      include: ['src/**'],
-      exclude: ['node_modules/**', 'dist/**']
-    }
   },
 });
