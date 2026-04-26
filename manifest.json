@@ -7,11 +7,11 @@
   "author": "hwiyel",
   "sdkVersion": "1.0.0",
   "permissions": [
-    "accounts.getAll",
-    "activities.getAll",
-    "activities.saveMany",
-    "market.getDividends",
-    "sidebar.addItem",
-    "router.add"
+    { "name": "accounts.getAll", "category": "accounts", "purpose": "read", "functions": ["getAll"] },
+    { "name": "activities.getAll", "category": "activities", "purpose": "read", "functions": ["getAll"] },
+    { "name": "activities.saveMany", "category": "activities", "purpose": "write", "functions": ["saveMany"] },
+    { "name": "market.getDividends", "category": "market", "purpose": "read", "functions": ["getDividends"] },
+    { "name": "sidebar.addItem", "category": "ui", "purpose": "write", "functions": ["addItem"] },
+    { "name": "router.add", "category": "ui", "purpose": "write", "functions": ["add"] }
   ]
 }
