@@ -15,8 +15,6 @@ import type { Activity } from '@wealthfolio/addon-sdk';
 export interface DividendEvent {
   /** ex-dividend date (YYYY-MM-DD) */
   exDate: string;
-  /** payment date, if available */
-  paymentDate?: string;
   /** dividend per share in the security's native currency */
   amount: number;
   currency: string;
@@ -27,7 +25,6 @@ export interface MissingDividend {
   accountId: string;
   accountName: string;
   exDate: string;
-  paymentDate?: string;
   sharesHeld: number;
   amountPerShare: number;
   totalAmount: number;
@@ -41,6 +38,28 @@ export interface MissingDividend {
 interface LotEntry {
   date: string; // ISO date string of the transaction
   shares: number; // positive = bought, negative = sold
+}
+
+function getActivitySymbol(activity: Activity): string | undefined {
+  return (activity as any).assetSymbol || (activity as any).symbol;
+}
+
+function getActivityQuantity(activity: Activity): number | undefined {
+  const raw =
+    (activity as any).quantity ??
+    (activity as any).shares ??
+    (activity as any).units;
+
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) ? raw : undefined;
+  }
+
+  if (typeof raw === 'string') {
+    const parsed = Number.parseFloat(raw.replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
 }
 
 /**
@@ -58,13 +77,16 @@ function buildLotLedger(
       (a) =>
         (a as any).accountId === accountId &&
         ((a as any).activityType === 'BUY' || (a as any).activityType === 'SELL') &&
-        ((a as any).assetSymbol || (a as any).symbol)
+        getActivitySymbol(a)
     )
     .sort((a, b) => (a as any).date.localeCompare((b as any).date));
 
   for (const a of relevant) {
-    const symbol = (a as any).assetSymbol || (a as any).symbol!;
-    const delta = (a as any).activityType === 'BUY' ? (a as any).quantity : -(a as any).quantity;
+    const symbol = getActivitySymbol(a);
+    const quantity = getActivityQuantity(a);
+    if (!symbol || quantity === undefined) continue;
+
+    const delta = (a as any).activityType === 'BUY' ? quantity : -quantity;
     if (!ledger.has(symbol)) ledger.set(symbol, []);
     ledger.get(symbol)!.push({ date: (a as any).date.slice(0, 10), shares: delta });
   }
@@ -98,8 +120,8 @@ function sharesHeldAt(lots: LotEntry[], targetDate: string): number {
 function buildExistingDividendKeys(activities: Activity[]): Set<string> {
   const keys = new Set<string>();
   for (const a of activities) {
-    if ((a as any).activityType === 'DIVIDEND' && ((a as any).assetSymbol || (a as any).symbol)) {
-      const symbol = (a as any).assetSymbol || (a as any).symbol;
+    const symbol = getActivitySymbol(a);
+    if ((a as any).activityType === 'DIVIDEND' && symbol) {
       const date = (a as any).date.slice(0, 10);
       keys.add(`${symbol}|${(a as any).accountId}|${date}`);
     }
@@ -146,9 +168,6 @@ export function computeMissingDividends(
         const shares = sharesHeldAt(lots, event.exDate);
         if (shares <= 0) continue; // didn't hold on ex-date
 
-        // Use ex-date as the activity date (most common convention)
-        // Some users prefer payment date — we surface both in the UI
-        const activityDate = event.paymentDate ?? event.exDate;
         const dedupeKey = `${symbol}|${account.id}|${event.exDate}`;
 
         if (existingKeys.has(dedupeKey)) continue; // already logged
@@ -158,7 +177,6 @@ export function computeMissingDividends(
           accountId: account.id,
           accountName: account.name,
           exDate: event.exDate,
-          paymentDate: event.paymentDate,
           sharesHeld: shares,
           amountPerShare: event.amount,
           totalAmount: parseFloat((shares * event.amount).toFixed(4)),
@@ -183,17 +201,13 @@ export function computeMissingDividends(
  *   total     = quantity * unitPrice  (computed by Wealthfolio)
  */
 export function toActivityPayload(
-  dividend: MissingDividend,
-  usePaymentDate: boolean
+  dividend: MissingDividend
 ): any {
   return {
     accountId: dividend.accountId,
     activityType: 'DIVIDEND',
     symbol: dividend.symbol,
-    // Use payment date if available and user prefers it, else fall back to ex-date
-    date: usePaymentDate && dividend.paymentDate
-      ? dividend.paymentDate
-      : dividend.exDate,
+    date: dividend.exDate,
     quantity: dividend.sharesHeld,
     unitPrice: dividend.amountPerShare,
     currency: dividend.currency,
