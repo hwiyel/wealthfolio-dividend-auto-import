@@ -41,13 +41,13 @@ import {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function fmt(n: number, currency: string) {
+function fmt(n: number, currency: string, isFee = false) {
   const isKRW = currency === 'KRW';
   return new Intl.NumberFormat(undefined, {
     style: 'currency',
     currency,
-    minimumFractionDigits: isKRW ? 0 : 2,
-    maximumFractionDigits: isKRW ? 0 : 4,
+    minimumFractionDigits: isKRW && !isFee ? 0 : 2,
+    maximumFractionDigits: isKRW && !isFee ? 0 : 2,
   }).format(n);
 }
 function fmtDate(iso: string) {
@@ -259,11 +259,22 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
     .filter((d) => selected.has(d.key))
     .reduce((acc, d) => {
       if (!acc[d.currency]) {
-        acc[d.currency] = 0;
+        acc[d.currency] = { gross: 0, fee: 0 };
       }
-      acc[d.currency] += d.totalAmount;
+      acc[d.currency].gross += d.totalAmount;
+      acc[d.currency].fee += d.fee;
       return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, { gross: number; fee: number }>);
+
+  const updateFee = (key: string, newFee: string) => {
+    const val = parseFloat(newFee.replace(/,/g, ''));
+    if (isNaN(val)) return;
+    // Round to 2 decimal places
+    const roundedVal = parseFloat(val.toFixed(2));
+    setMissing((prev) =>
+      prev.map((d) => (d.key === key ? { ...d, fee: roundedVal } : d))
+    );
+  };
 
   // Filter dividends by search term
   const filteredMissing = missing.filter((d) =>
@@ -424,12 +435,15 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                   <span>Missing Dividends</span>
                   {selected.size > 0 && (
                     <div className="text-sm font-normal text-muted-foreground">
-                      <span className="font-medium text-foreground">
-                        Total Amount:{' '}
-                        {Object.entries(selectedTotalsByCurrency)
-                          .map(([currency, amount]) => fmt(amount, currency))
-                          .join(' + ')}
-                      </span>
+                      <div className="flex flex-col items-end gap-0.5">
+                        {Object.entries(selectedTotalsByCurrency).map(([currency, totals]) => (
+                          <div key={currency} className="flex gap-3">
+                            <span>Gross: <span className="font-medium text-foreground">{fmt(totals.gross, currency)}</span></span>
+                            <span>Tax: <span className="font-medium text-foreground">{fmt(totals.fee, currency, true)}</span></span>
+                            <span>Net: <span className="font-bold text-green-600 dark:text-green-400">{fmt(totals.gross - totals.fee, currency, true)}</span></span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </CardTitle>
@@ -461,6 +475,7 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                           <th className="p-3 text-right">Quantity</th>
                           <th className="p-3 text-right">Per share</th>
                           <th className="p-3 text-right">Amount</th>
+                          <th className="p-3 text-right w-[120px]">Fee (Tax)</th>
                           <th className="p-3 text-left">Account</th>
                         </tr>
                       </thead>
@@ -495,6 +510,14 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                             </td>
                             <td className="p-3 text-sm text-right font-medium text-green-600 dark:text-green-400">
                               {fmt(d.totalAmount, d.currency)}
+                            </td>
+                            <td className="p-3 text-sm text-right">
+                              <Input
+                                type="text"
+                                value={d.fee}
+                                onChange={(e) => updateFee(d.key, e.target.value)}
+                                className="h-8 w-[100px] ml-auto text-right text-xs"
+                              />
                             </td>
                             <td className="p-3 text-sm text-muted-foreground">
                               {d.accountName}
