@@ -29,6 +29,7 @@ export interface MissingDividend {
   sharesHeld: number;
   amountPerShare: number;
   totalAmount: number;
+  fee: number;
   currency: string;
   /** unique key used for deduplication in UI state */
   key: string;
@@ -181,6 +182,11 @@ export function computeMissingDividends(
 
         if (existingKeys.has(dedupeKey)) continue; // already logged
 
+        const totalAmount = parseFloat((shares * event.amount).toFixed(4));
+        // Simple estimated tax: 15.4% for KRW, 15% for others
+        const taxRate = event.currency === 'KRW' ? 0.154 : 0.15;
+        const fee = parseFloat((totalAmount * taxRate).toFixed(2));
+
         results.push({
           symbol,
           symbolName: symbolNames.get(symbol),
@@ -189,7 +195,8 @@ export function computeMissingDividends(
           exDate: event.exDate,
           sharesHeld: shares,
           amountPerShare: event.amount,
-          totalAmount: parseFloat((shares * event.amount).toFixed(4)),
+          totalAmount,
+          fee,
           currency: event.currency,
           key: dedupeKey,
         });
@@ -221,7 +228,7 @@ export function toActivityPayload(
     quantity: dividend.sharesHeld,
     unitPrice: dividend.amountPerShare,
     currency: dividend.currency,
-    fee: 0,
+    fee: dividend.fee,
     amount: dividend.totalAmount,
     isDraft: false,
     isValid: true,
