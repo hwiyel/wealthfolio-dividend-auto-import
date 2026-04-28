@@ -43,11 +43,12 @@ import {
 
 function fmt(n: number, currency: string, isFee = false) {
   const isKRW = currency === 'KRW';
+  const decimals = isKRW ? 0 : 2;
   return new Intl.NumberFormat(undefined, {
     style: 'currency',
     currency,
-    minimumFractionDigits: isKRW && !isFee ? 0 : 2,
-    maximumFractionDigits: isKRW && !isFee ? 0 : 2,
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
   }).format(n);
 }
 function fmtDate(iso: string) {
@@ -269,10 +270,21 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
   const updateFee = (key: string, newFee: string) => {
     const val = parseFloat(newFee.replace(/,/g, ''));
     if (isNaN(val)) return;
-    // Round to 2 decimal places
-    const roundedVal = parseFloat(val.toFixed(2));
+    
     setMissing((prev) =>
-      prev.map((d) => (d.key === key ? { ...d, fee: roundedVal } : d))
+      prev.map((d) => {
+        if (d.key === key) {
+          let roundedVal: number;
+          if (d.currency === 'KRW') {
+            // Truncate under 10 won for KRW
+            roundedVal = Math.floor(val / 10) * 10;
+          } else {
+            roundedVal = parseFloat(val.toFixed(2));
+          }
+          return { ...d, fee: roundedVal };
+        }
+        return d;
+      })
     );
   };
 

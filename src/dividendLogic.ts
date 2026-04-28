@@ -185,7 +185,14 @@ export function computeMissingDividends(
         const totalAmount = parseFloat((shares * event.amount).toFixed(4));
         // Simple estimated tax: 15.4% for KRW, 15% for others
         const taxRate = event.currency === 'KRW' ? 0.154 : 0.15;
-        const fee = parseFloat((totalAmount * taxRate).toFixed(2));
+        let fee = totalAmount * taxRate;
+        
+        if (event.currency === 'KRW') {
+          // Truncate under 10 won (Korean Tax Law)
+          fee = Math.floor(fee / 10) * 10;
+        } else {
+          fee = parseFloat(fee.toFixed(2));
+        }
 
         results.push({
           symbol,
