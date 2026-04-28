@@ -43,8 +43,21 @@ jobs:
       - name: Build bundle
         run: pnpm run bundle
 
-      - name: Upload bundle artifact
+      # manifest.json에서 id/version 추출
+      - name: Get addon info
+        id: addon-info
+        run: |
+          ID=$(jq -r '.id' manifest.json)
+          VERSION=$(jq -r '.version' manifest.json)
+          ZIP_NAME="${ID}-${VERSION}.zip"
+          echo "addon-id=$ID" >> $GITHUB_OUTPUT
+          echo "addon-version=$VERSION" >> $GITHUB_OUTPUT
+          echo "zip-name=$ZIP_NAME" >> $GITHUB_OUTPUT
+
+      # ZIP 파일명 동적 생성
+      - name: Rename and upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wealthfolio-addon-bundle
+          name: ${{ steps.addon-info.outputs.zip-name }}
           path: dist/*.zip
+
