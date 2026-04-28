@@ -142,8 +142,12 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
           try {
             // Convert Korean stock symbols for Yahoo Finance
             let yahooSymbol = symbol;
-            if (/^\d{6}$/.test(symbol)) {
+            if (/^\d{4,6}[A-Z0-9]{0,2}$/.test(symbol)) {
+              // Korean listed products (stocks/ETFs)
               yahooSymbol = `${symbol}.KS`;
+            } else if (/^[A-Z]+(\.[A-Z]+)?$/.test(symbol)) {
+              // US listed products (stocks/ETFs) - no suffix needed
+              yahooSymbol = symbol;
             }
 
             let events = null;
