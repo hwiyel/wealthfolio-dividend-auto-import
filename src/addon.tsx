@@ -148,12 +148,25 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
             }
             
             let events = null;
-            
+
+            // Debug logging
+            ctx.api.logger.debug(`[Dividend Assistant] Fetching dividends for ${symbol} (yahooSymbol: ${yahooSymbol})`);
+            ctx.api.logger.debug(`[Dividend Assistant] ctx.api.market exists: ${!!ctx.api.market}`);
+            if (ctx.api.market) {
+              ctx.api.logger.debug(`[Dividend Assistant] fetchDividends exists: ${typeof (ctx.api.market as any).fetchDividends}`);
+            }
+
             // Try different API paths
             if (ctx.api.market && typeof (ctx.api.market as any).fetchDividends === 'function') {
-              events = await (ctx.api.market as any).fetchDividends(yahooSymbol, fromDate, toDate);
+              ctx.api.logger.info(`[Dividend Assistant] Using ctx.api.market.fetchDividends`);
+              events = await (ctx.api.market as any).fetchDividends(yahooSymbol);
+              ctx.api.logger.debug(`[Dividend Assistant] fetchDividends result:`, events);
             } else if (typeof (ctx.api as any).fetchDividends === 'function') {
-              events = await (ctx.api as any).fetchDividends(yahooSymbol, fromDate, toDate);
+              ctx.api.logger.info(`[Dividend Assistant] Using ctx.fetchDividends`);
+              events = await (ctx.api as any).fetchDividends(yahooSymbol);
+              ctx.api.logger.debug(`[Dividend Assistant] fetchDividends result:`, events);
+            } else {
+              ctx.api.logger.warn(`[Dividend Assistant] No fetchDividends function found`);
             }
             
             if (Array.isArray(events) && events.length > 0) {
@@ -183,7 +196,9 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
               dividendsBySymbol.set(symbol, mappedEvents as DividendEvent[]);
             }
           } catch (error) {
-            // Symbol may not have dividend data — skip silently
+            // Log the error with details
+            ctx.api.logger.error(`[Dividend Assistant] Error fetching dividends for ${symbol}:`, error);
+            console.error(`[Dividend Assistant] Error fetching dividends for ${symbol}:`, error);
           }
         })
       );
