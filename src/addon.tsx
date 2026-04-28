@@ -2,7 +2,7 @@
  * addon.tsx — Dividend Assistant
  *
  * UI flow:
- *   Settings bar (account filter, date range, date preference)
+ *   Settings bar (account filter, date range)
  *   → "Scan" button
  *   → Table of missing dividends with per-row checkbox
  *   → "Log Selected" button → ctx.api.activities.saveMany()
@@ -79,7 +79,6 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
   const [fromDate, setFromDate] = useState(twoYearsAgoStr());
   const [toDate, setToDate] = useState(todayStr());
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
-  const [usePaymentDate, setUsePaymentDate] = useState(false);
 
   // ── Scan / result state ──
   const [missing, setMissing] = useState<MissingDividend[]>([]);
@@ -113,14 +112,14 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
           : accounts.filter((a) => a.id === selectedAccountId);
 
       const targetIds = new Set(targetAccounts.map((a) => a.id));
-      
+
       const filteredActivities = allActivities.filter(
         (a) =>
           targetIds.has(a.accountId) &&
           (a.activityType === 'BUY' || a.activityType === 'SELL') &&
           ((a as any).assetSymbol || (a as any).symbol)
       );
-      
+
       const symbols = [
         ...new Set(
           filteredActivities
@@ -146,7 +145,7 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
             if (/^\d{6}$/.test(symbol)) {
               yahooSymbol = `${symbol}.KS`;
             }
-            
+
             let events = null;
 
             // Debug logging
@@ -168,7 +167,7 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
             } else {
               ctx.api.logger.warn(`[Dividend Assistant] No fetchDividends function found`);
             }
-            
+
             if (Array.isArray(events) && events.length > 0) {
               // Map the API response to DividendEvent format
               const mappedEvents = events.map((e: any) => {
@@ -177,18 +176,12 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                 if (typeof exDate === 'number') {
                   exDate = new Date(exDate * 1000).toISOString().slice(0, 10);
                 }
-                
-                let paymentDate = e.paymentDate;
-                if (typeof paymentDate === 'number') {
-                  paymentDate = new Date(paymentDate * 1000).toISOString().slice(0, 10);
-                }
-                
+
                 // Korean stocks should be KRW, others default to USD
                 const currency = yahooSymbol.endsWith('.KS') ? 'KRW' : (e.currency || 'USD');
-                
+
                 return {
                   exDate,
-                  paymentDate,
                   amount: e.amount || e.dividend,
                   currency,
                 };
@@ -226,16 +219,14 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
   // ── Log selected dividends ──
   const logMutation = useMutation({
     mutationFn: async (toLog: MissingDividend[]) => {
-      const payloads = toLog.map((d) =>
-        toActivityPayload(d, usePaymentDate)
-      );
-      
+      const payloads = toLog.map((d) => toActivityPayload(d));
+
       // Check import first (only activities, no accountId)
       const checked = await (ctx.api.activities as any).checkImport(payloads);
-      
+
       // Then import
       const imported = await (ctx.api.activities as any).import(checked);
-      
+
       return imported;
     },
     onSuccess: () => {
@@ -358,22 +349,6 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                 max={todayStr()}
                 onChange={(e) => setToDate(e.target.value)}
               />
-            </div>
-
-            <div className="flex items-center gap-2 pb-2">
-              <input
-                type="checkbox"
-                id="usePaymentDate"
-                checked={usePaymentDate}
-                onChange={(e) => setUsePaymentDate(e.target.checked)}
-                className="h-4 w-4 rounded border-input"
-              />
-              <label
-                htmlFor="usePaymentDate"
-                className="cursor-pointer text-sm text-muted-foreground"
-              >
-                Use payment date
-              </label>
             </div>
 
             <Button
@@ -500,7 +475,6 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                           <th className="p-3 text-left">Symbol</th>
                           <th className="p-3 text-left">Account</th>
                           <th className="p-3 text-left">Ex-date</th>
-                          <th className="p-3 text-left">Payment date</th>
                           <th className="p-3 text-right">Shares</th>
                           <th className="p-3 text-right">Per share</th>
                           <th className="p-3 text-right">Total</th>
@@ -523,9 +497,6 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                               {d.accountName}
                             </td>
                             <td className="p-3 text-sm">{fmtDate(d.exDate)}</td>
-                            <td className="p-3 text-sm text-muted-foreground">
-                              {d.paymentDate ? fmtDate(d.paymentDate) : '—'}
-                            </td>
                             <td className="p-3 text-sm text-right">
                               {d.sharesHeld}
                             </td>

@@ -15,8 +15,6 @@ import type { Activity } from '@wealthfolio/addon-sdk';
 export interface DividendEvent {
   /** ex-dividend date (YYYY-MM-DD) */
   exDate: string;
-  /** payment date, if available */
-  paymentDate?: string;
   /** dividend per share in the security's native currency */
   amount: number;
   currency: string;
@@ -27,7 +25,6 @@ export interface MissingDividend {
   accountId: string;
   accountName: string;
   exDate: string;
-  paymentDate?: string;
   sharesHeld: number;
   amountPerShare: number;
   totalAmount: number;
@@ -171,9 +168,6 @@ export function computeMissingDividends(
         const shares = sharesHeldAt(lots, event.exDate);
         if (shares <= 0) continue; // didn't hold on ex-date
 
-        // Use ex-date as the activity date (most common convention)
-        // Some users prefer payment date — we surface both in the UI
-        const activityDate = event.paymentDate ?? event.exDate;
         const dedupeKey = `${symbol}|${account.id}|${event.exDate}`;
 
         if (existingKeys.has(dedupeKey)) continue; // already logged
@@ -183,7 +177,6 @@ export function computeMissingDividends(
           accountId: account.id,
           accountName: account.name,
           exDate: event.exDate,
-          paymentDate: event.paymentDate,
           sharesHeld: shares,
           amountPerShare: event.amount,
           totalAmount: parseFloat((shares * event.amount).toFixed(4)),
@@ -208,17 +201,13 @@ export function computeMissingDividends(
  *   total     = quantity * unitPrice  (computed by Wealthfolio)
  */
 export function toActivityPayload(
-  dividend: MissingDividend,
-  usePaymentDate: boolean
+  dividend: MissingDividend
 ): any {
   return {
     accountId: dividend.accountId,
     activityType: 'DIVIDEND',
     symbol: dividend.symbol,
-    // Use payment date if available and user prefers it, else fall back to ex-date
-    date: usePaymentDate && dividend.paymentDate
-      ? dividend.paymentDate
-      : dividend.exDate,
+    date: dividend.exDate,
     quantity: dividend.sharesHeld,
     unitPrice: dividend.amountPerShare,
     currency: dividend.currency,
