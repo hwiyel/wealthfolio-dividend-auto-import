@@ -41,25 +41,13 @@ import {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
-function oneYearAgoStr() {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - 1);
-  return d.toISOString().slice(0, 10);
-}
-function twoYearsAgoStr() {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - 2);
-  return d.toISOString().slice(0, 10);
-}
 function fmt(n: number, currency: string) {
+  const isKRW = currency === 'KRW';
   return new Intl.NumberFormat(undefined, {
     style: 'currency',
     currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
+    minimumFractionDigits: isKRW ? 0 : 2,
+    maximumFractionDigits: isKRW ? 0 : 4,
   }).format(n);
 }
 function fmtDate(iso: string) {
@@ -76,8 +64,6 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
   const queryClient = useQueryClient();
 
   // ── Filter state ──
-  const [fromDate, setFromDate] = useState(twoYearsAgoStr());
-  const [toDate, setToDate] = useState(todayStr());
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
 
   // ── Scan / result state ──
@@ -204,9 +190,7 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
       const results = computeMissingDividends(
         allActivities,
         targetAccounts.map((a) => ({ id: a.id, name: a.name })),
-        dividendsBySymbol,
-        fromDate,
-        toDate
+        dividendsBySymbol
       );
 
       setMissing(results);
@@ -218,7 +202,7 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
     } finally {
       setScanning(false);
     }
-  }, [accounts, selectedAccountId, fromDate, toDate, ctx]);
+  }, [accounts, selectedAccountId, ctx]);
 
   // ── Log selected dividends ──
   const logMutation = useMutation({
@@ -284,6 +268,7 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
   // Filter dividends by search term
   const filteredMissing = missing.filter((d) =>
     d.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (d.symbolName && d.symbolName.toLowerCase().includes(searchTerm.toLowerCase())) ||
     d.accountName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -306,72 +291,106 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
     <Page>
       {header}
       <PageContent>
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-          {/* Filter bar */}
-          <div className="flex flex-wrap items-end gap-4 rounded-lg border bg-card p-4">
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-medium uppercase text-muted-foreground">
-                Account
-              </label>
-              <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="All accounts" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All accounts</SelectItem>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        <div className="flex w-full flex-col gap-6">
+          {/* Toolbar */}
+          <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+            {/* Row 1: Scan Settings */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold uppercase text-muted-foreground whitespace-nowrap">
+                    Account
+                  </label>
+                  <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                    <SelectTrigger className="h-10 w-[200px]">
+                      <SelectValue placeholder="All accounts" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All accounts</SelectItem>
+                      {accounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-medium uppercase text-muted-foreground">
-                From
-              </label>
-              <input
-                type="date"
-                className="min-w-[140px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                value={fromDate}
-                max={toDate}
-                onChange={(e) => setFromDate(e.target.value)}
-              />
-            </div>
+                <Button
+                  onClick={handleScan}
+                  disabled={scanning}
+                  className="h-10"
+                  variant={scanned ? "outline" : "default"}
+                >
+                  {scanning ? (
+                    <>
+                      <Icons.Loader className="mr-2 h-4 w-4 animate-spin" />
+                      Scanning…
+                    </>
+                  ) : (
+                    <>
+                      <Icons.Search className="mr-2 h-4 w-4" />
+                      Scan
+                    </>
+                  )}
+                </Button>
+              </div>
 
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-medium uppercase text-muted-foreground">
-                To
-              </label>
-              <input
-                type="date"
-                className="min-w-[140px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                value={toDate}
-                min={fromDate}
-                max={todayStr()}
-                onChange={(e) => setToDate(e.target.value)}
-              />
-            </div>
-
-            <Button
-              onClick={handleScan}
-              disabled={scanning}
-              className="ml-auto"
-            >
-              {scanning ? (
-                <>
-                  <Icons.Loader className="mr-2 h-4 w-4 animate-spin" />
-                  Scanning…
-                </>
-              ) : (
-                <>
-                  <Icons.Search className="mr-2 h-4 w-4" />
-                  Scan
-                </>
+              {scanned && missing.length > 0 && (
+                <div className="text-sm font-medium text-muted-foreground">
+                  Found <span className="text-foreground">{missing.length}</span> missing dividends
+                </div>
               )}
-            </Button>
+            </div>
+
+            {/* Row 2: Actions & Filters (Always visible for layout stability) */}
+            <div className="flex flex-wrap items-center gap-4 border-t pt-4">
+              <div className="w-full max-w-md">
+                <div className="relative">
+                  <Icons.Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search symbols or accounts..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    disabled={!scanned || missing.length === 0}
+                    className="h-10 pl-10"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 ml-auto">
+                <div className="text-sm text-muted-foreground mr-1">
+                  <span className="font-semibold text-foreground">{selected.size}</span> selected
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={toggleAll} 
+                  className="h-9"
+                  disabled={!scanned || missing.length === 0}
+                >
+                  {selected.size === filteredMissing.length && missing.length > 0 ? 'Deselect all' : 'Select all'}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleLogSelected}
+                  disabled={selected.size === 0 || logMutation.isPending || !scanned}
+                  className="h-9"
+                >
+                  {logMutation.isPending ? (
+                    <>
+                      <Icons.Loader className="mr-2 h-4 w-4 animate-spin" />
+                      Logging…
+                    </>
+                  ) : (
+                    <>
+                      <Icons.Check className="mr-2 h-4 w-4" />
+                      Log {selected.size} Dividends
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
           </div>
 
           {/* Error */}
@@ -393,69 +412,30 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                   <EmptyPlaceholder.Description>
                     {scanned
                       ? 'All your dividend income has been logged. Great job!'
-                      : 'Select an account and date range, then click Scan to find missing dividend entries.'}
+                      : 'Select an account, then click Scan to find missing dividend entries.'}
                   </EmptyPlaceholder.Description>
                 </EmptyPlaceholder>
               </div>
             </div>
           ) : (
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
+              <CardHeader className="py-4">
+                <CardTitle className="flex items-center justify-between text-base">
                   <span>Missing Dividends</span>
-                  <div className="text-muted-foreground flex items-center gap-2 text-sm">
-                    <span>
-                      {selected.size} of {missing.length} selected
-                    </span>
-                    {selected.size > 0 && (
-                      <>
-                        <span>•</span>
-                        <span className="font-medium text-foreground">
-                          total:{' '}
-                          {Object.entries(selectedTotalsByCurrency)
-                            .map(([currency, amount]) => fmt(amount, currency))
-                            .join(' + ')}
-                        </span>
-                      </>
-                    )}
-                  </div>
+                  {selected.size > 0 && (
+                    <div className="text-sm font-normal text-muted-foreground">
+                      <span className="font-medium text-foreground">
+                        Total Amount:{' '}
+                        {Object.entries(selectedTotalsByCurrency)
+                          .map(([currency, amount]) => fmt(amount, currency))
+                          .join(' + ')}
+                      </span>
+                    </div>
+                  )}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-col gap-4 lg:flex-row">
-                  <div className="flex-1">
-                    <Input
-                      placeholder="Search by symbol or account..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="max-w-sm"
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={toggleAll}>
-                      {selected.size === filteredMissing.length ? 'Deselect all' : 'Select all'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={handleLogSelected}
-                      disabled={selected.size === 0 || logMutation.isPending}
-                    >
-                      {logMutation.isPending ? (
-                        <>
-                          <Icons.Loader className="mr-2 h-4 w-4 animate-spin" />
-                          Logging…
-                        </>
-                      ) : (
-                        <>
-                          <Icons.Check className="mr-2 h-4 w-4" />
-                          Log {selected.size} dividend{selected.size !== 1 ? 's' : ''}
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border">
+              <CardContent className="p-0">
+                <div className="border-t">
                   <div className="max-h-[600px] overflow-auto">
                     <table className="w-full">
                       <thead className="bg-muted/50 sticky top-0">
@@ -476,12 +456,12 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                               }}
                             />
                           </th>
+                          <th className="p-3 text-left">Ex-Date</th>
                           <th className="p-3 text-left">Symbol</th>
-                          <th className="p-3 text-left">Account</th>
-                          <th className="p-3 text-left">Ex-date</th>
-                          <th className="p-3 text-right">Shares</th>
+                          <th className="p-3 text-right">Quantity</th>
                           <th className="p-3 text-right">Per share</th>
-                          <th className="p-3 text-right">Total</th>
+                          <th className="p-3 text-right">Amount</th>
+                          <th className="p-3 text-left">Account</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -496,11 +476,17 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                                 onCheckedChange={() => toggleRow(d.key)}
                               />
                             </td>
-                            <td className="p-3 font-medium">{d.symbol}</td>
-                            <td className="p-3 text-sm text-muted-foreground">
-                              {d.accountName}
-                            </td>
                             <td className="p-3 text-sm">{fmtDate(d.exDate)}</td>
+                            <td className="p-3">
+                              <div className="flex flex-col">
+                                <span className="font-medium">{d.symbol}</span>
+                                {d.symbolName && (
+                                  <span className="text-xs text-muted-foreground truncate max-w-[150px]">
+                                    {d.symbolName}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td className="p-3 text-sm text-right">
                               {d.sharesHeld}
                             </td>
@@ -509,6 +495,9 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                             </td>
                             <td className="p-3 text-sm text-right font-medium text-green-600 dark:text-green-400">
                               {fmt(d.totalAmount, d.currency)}
+                            </td>
+                            <td className="p-3 text-sm text-muted-foreground">
+                              {d.accountName}
                             </td>
                           </tr>
                         ))}

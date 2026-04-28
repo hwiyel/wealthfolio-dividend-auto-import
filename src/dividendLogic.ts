@@ -22,6 +22,7 @@ export interface DividendEvent {
 
 export interface MissingDividend {
   symbol: string;
+  symbolName?: string;
   accountId: string;
   accountName: string;
   exDate: string;
@@ -42,6 +43,10 @@ interface LotEntry {
 
 function getActivitySymbol(activity: Activity): string | undefined {
   return (activity as any).assetSymbol || (activity as any).symbol;
+}
+
+function getActivityName(activity: Activity): string | undefined {
+  return (activity as any).assetName || (activity as any).name;
 }
 
 function getActivityQuantity(activity: Activity): number | undefined {
@@ -146,14 +151,20 @@ export function computeMissingDividends(
   allActivities: Activity[],
   accounts: AccountInfo[],
   /** Map of symbol → DividendEvent[] fetched from market API */
-  dividendsBySymbol: Map<string, DividendEvent[]>,
-  /** Restrict to events on or after this date, e.g. "2020-01-01" */
-  fromDate: string,
-  /** Restrict to events up to and including today */
-  toDate: string
+  dividendsBySymbol: Map<string, DividendEvent[]>
 ): MissingDividend[] {
   const existingKeys = buildExistingDividendKeys(allActivities);
   const results: MissingDividend[] = [];
+
+  // Map symbols to names from activities
+  const symbolNames = new Map<string, string>();
+  for (const a of allActivities) {
+    const symbol = getActivitySymbol(a);
+    const name = getActivityName(a);
+    if (symbol && name) {
+      symbolNames.set(symbol, name);
+    }
+  }
 
   for (const account of accounts) {
     const ledger = buildLotLedger(allActivities, account.id);
@@ -163,8 +174,6 @@ export function computeMissingDividends(
       if (!lots || lots.length === 0) continue; // never held this in this account
 
       for (const event of events) {
-        if (event.exDate < fromDate || event.exDate > toDate) continue;
-
         const shares = sharesHeldAt(lots, event.exDate);
         if (shares <= 0) continue; // didn't hold on ex-date
 
@@ -174,6 +183,7 @@ export function computeMissingDividends(
 
         results.push({
           symbol,
+          symbolName: symbolNames.get(symbol),
           accountId: account.id,
           accountName: account.name,
           exDate: event.exDate,
