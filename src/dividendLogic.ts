@@ -43,6 +43,28 @@ interface LotEntry {
   shares: number; // positive = bought, negative = sold
 }
 
+function getActivitySymbol(activity: Activity): string | undefined {
+  return (activity as any).assetSymbol || (activity as any).symbol;
+}
+
+function getActivityQuantity(activity: Activity): number | undefined {
+  const raw =
+    (activity as any).quantity ??
+    (activity as any).shares ??
+    (activity as any).units;
+
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) ? raw : undefined;
+  }
+
+  if (typeof raw === 'string') {
+    const parsed = Number.parseFloat(raw.replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
 /**
  * Returns a map of symbol → sorted array of lot entries derived from BUY/SELL
  * activities for a specific account.
@@ -58,13 +80,16 @@ function buildLotLedger(
       (a) =>
         (a as any).accountId === accountId &&
         ((a as any).activityType === 'BUY' || (a as any).activityType === 'SELL') &&
-        ((a as any).assetSymbol || (a as any).symbol)
+        getActivitySymbol(a)
     )
     .sort((a, b) => (a as any).date.localeCompare((b as any).date));
 
   for (const a of relevant) {
-    const symbol = (a as any).assetSymbol || (a as any).symbol!;
-    const delta = (a as any).activityType === 'BUY' ? (a as any).quantity : -(a as any).quantity;
+    const symbol = getActivitySymbol(a);
+    const quantity = getActivityQuantity(a);
+    if (!symbol || quantity === undefined) continue;
+
+    const delta = (a as any).activityType === 'BUY' ? quantity : -quantity;
     if (!ledger.has(symbol)) ledger.set(symbol, []);
     ledger.get(symbol)!.push({ date: (a as any).date.slice(0, 10), shares: delta });
   }
@@ -98,8 +123,8 @@ function sharesHeldAt(lots: LotEntry[], targetDate: string): number {
 function buildExistingDividendKeys(activities: Activity[]): Set<string> {
   const keys = new Set<string>();
   for (const a of activities) {
-    if ((a as any).activityType === 'DIVIDEND' && ((a as any).assetSymbol || (a as any).symbol)) {
-      const symbol = (a as any).assetSymbol || (a as any).symbol;
+    const symbol = getActivitySymbol(a);
+    if ((a as any).activityType === 'DIVIDEND' && symbol) {
       const date = (a as any).date.slice(0, 10);
       keys.add(`${symbol}|${(a as any).accountId}|${date}`);
     }
