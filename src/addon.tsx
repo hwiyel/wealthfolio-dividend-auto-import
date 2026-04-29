@@ -38,6 +38,7 @@ import {
   type MissingDividend,
   type DividendEvent,
 } from './dividendLogic';
+import SettingsPage from './pages/Settings';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,9 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
 
   // ── Filter state ──
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
+  
+  // ── Tax-exempt accounts state ──
+  const [taxExemptAccountIds, setTaxExemptAccountIds] = useState<Set<string>>(new Set());
 
   // ── Scan / result state ──
   const [missing, setMissing] = useState<MissingDividend[]>([]);
@@ -80,6 +84,19 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
     queryKey: ['accounts'],
     queryFn: () => ctx.api.accounts.getAll(),
   });
+
+  // ── Load tax-exempt settings ──
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem('dividend-assistant-tax-exempt-accounts');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setTaxExemptAccountIds(new Set(parsed));
+      }
+    } catch (error) {
+      ctx.api.logger.error('Failed to load tax-exempt settings: ' + String(error));
+    }
+  }, [ctx]);
 
   // ── Scan logic ──
   const handleScan = useCallback(async () => {
@@ -191,7 +208,8 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
       const results = computeMissingDividends(
         allActivities,
         targetAccounts.map((a) => ({ id: a.id, name: a.name })),
-        dividendsBySymbol
+        dividendsBySymbol,
+        taxExemptAccountIds
       );
 
       setMissing(results);
@@ -203,7 +221,7 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
     } finally {
       setScanning(false);
     }
-  }, [accounts, selectedAccountId, ctx]);
+  }, [accounts, selectedAccountId, ctx, taxExemptAccountIds]);
 
   // ── Log selected dividends ──
   const logMutation = useMutation({
@@ -297,16 +315,21 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
 
   // ── Render ──
   const header = (
-    <PageHeader>
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold sm:text-xl">Dividend Assistant</h1>
-          {scanned && <StatusBadge count={missing.length} />}
-        </div>
-        <p className="text-muted-foreground text-sm sm:text-base">
-          Detect and log missing dividend income based on your holdings.
-        </p>
-      </div>
+    <PageHeader
+      heading="Dividend Assistant"
+      text="Detect and log missing dividend income based on your holdings."
+      actions={
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => ctx.api.navigation.navigate('/addons/dividend-assistant/settings')}
+          className="rounded-full"
+        >
+          <Icons.Settings className="size-4" />
+        </Button>
+      }
+    >
+      {scanned && <StatusBadge count={missing.length} />}
     </PageHeader>
   );
 
@@ -442,11 +465,11 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
             </div>
           ) : (
             <Card>
-              <CardHeader className="py-4">
-                <CardTitle className="flex items-center justify-between text-base">
+              <CardHeader className="py-6">
+                <CardTitle className="flex items-center justify-between text-xl">
                   <span>Missing Dividends</span>
-                  {selected.size > 0 && (
-                    <div className="text-sm font-normal text-muted-foreground">
+                  <div className="text-sm font-normal text-muted-foreground min-h-[60px] flex items-center">
+                    {selected.size > 0 ? (
                       <div className="flex flex-col items-end gap-0.5">
                         {Object.entries(selectedTotalsByCurrency).map(([currency, totals]) => (
                           <div key={currency} className="flex gap-3">
@@ -456,8 +479,8 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    ) : null}
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -615,6 +638,19 @@ export default function enable(ctx: AddonContext) {
         default: () => (
           <QueryClientProvider client={queryClient}>
           <DividendAssistantPage ctx={ctx} />
+          </QueryClientProvider>
+        ),
+      })
+    ),
+  });
+
+  ctx.router.add({
+    path: '/addons/dividend-assistant/settings',
+    component: React.lazy(() =>
+      Promise.resolve({
+        default: () => (
+          <QueryClientProvider client={queryClient}>
+          <SettingsPage ctx={ctx} />
           </QueryClientProvider>
         ),
       })

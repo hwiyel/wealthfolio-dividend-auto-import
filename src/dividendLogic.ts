@@ -152,7 +152,9 @@ export function computeMissingDividends(
   allActivities: Activity[],
   accounts: AccountInfo[],
   /** Map of symbol → DividendEvent[] fetched from market API */
-  dividendsBySymbol: Map<string, DividendEvent[]>
+  dividendsBySymbol: Map<string, DividendEvent[]>,
+  /** Set of account IDs that are tax-exempt */
+  taxExemptAccountIds?: Set<string>
 ): MissingDividend[] {
   const existingKeys = buildExistingDividendKeys(allActivities);
   const results: MissingDividend[] = [];
@@ -183,15 +185,25 @@ export function computeMissingDividends(
         if (existingKeys.has(dedupeKey)) continue; // already logged
 
         const totalAmount = parseFloat((shares * event.amount).toFixed(4));
-        // Simple estimated tax: 15.4% for KRW, 15% for others
-        const taxRate = event.currency === 'KRW' ? 0.154 : 0.15;
-        let fee = totalAmount * taxRate;
         
-        if (event.currency === 'KRW') {
-          // Truncate under 10 won (Korean Tax Law)
-          fee = Math.floor(fee / 10) * 10;
+        // Check if this account is tax-exempt
+        const isTaxExempt = taxExemptAccountIds?.has(account.id);
+        
+        let fee: number;
+        if (isTaxExempt) {
+          // Tax-exempt account: no tax
+          fee = 0;
         } else {
-          fee = parseFloat(fee.toFixed(2));
+          // Simple estimated tax: 15.4% for KRW, 15% for others
+          const taxRate = event.currency === 'KRW' ? 0.154 : 0.15;
+          fee = totalAmount * taxRate;
+          
+          if (event.currency === 'KRW') {
+            // Truncate under 10 won (Korean Tax Law)
+            fee = Math.floor(fee / 10) * 10;
+          } else {
+            fee = parseFloat(fee.toFixed(2));
+          }
         }
 
         results.push({
