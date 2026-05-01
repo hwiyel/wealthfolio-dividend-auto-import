@@ -39,6 +39,7 @@ import {
   type DividendEvent,
 } from './dividendLogic';
 import SettingsPage from './pages/Settings';
+import { useIgnoredItems } from './hooks/useIgnoredItems';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ function fmtDate(iso: string) {
 
 function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
   const queryClient = useQueryClient();
+  const { ignoredKeys, addIgnoredKey } = useIgnoredItems();
 
   // ── Filter state ──
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
@@ -107,7 +109,7 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
 
     try {
       // 1. Load all activities
-      const allActivities: Activity[] = await ctx.api.activities.getAll();
+      const allActivities: any[] = await ctx.api.activities.getAll();
 
       // 2. Find unique symbols from BUY/SELL in the selected account(s)
       const targetAccounts =
@@ -167,11 +169,9 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
             if (ctx.api.market && typeof (ctx.api.market as any).fetchDividends === 'function') {
               ctx.api.logger.info(`[Dividend Assistant] Using ctx.api.market.fetchDividends`);
               events = await (ctx.api.market as any).fetchDividends(yahooSymbol);
-              ctx.api.logger.debug(`[Dividend Assistant] fetchDividends result:`, events);
             } else if (typeof (ctx.api as any).fetchDividends === 'function') {
               ctx.api.logger.info(`[Dividend Assistant] Using ctx.fetchDividends`);
               events = await (ctx.api as any).fetchDividends(yahooSymbol);
-              ctx.api.logger.debug(`[Dividend Assistant] fetchDividends result:`, events);
             } else {
               ctx.api.logger.warn(`[Dividend Assistant] No fetchDividends function found`);
             }
@@ -198,7 +198,7 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
             }
           } catch (error) {
             // Log the error with details
-            ctx.api.logger.error(`[Dividend Assistant] Error fetching dividends for ${symbol}:`, error);
+            ctx.api.logger.error(`[Dividend Assistant] Error fetching dividends for ${symbol}: ${error}`);
             console.error(`[Dividend Assistant] Error fetching dividends for ${symbol}:`, error);
           }
         })
@@ -306,12 +306,14 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
     );
   };
 
-  // Filter dividends by search term
-  const filteredMissing = missing.filter((d) =>
-    d.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (d.symbolName && d.symbolName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    d.accountName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredMissing = missing.filter((d) => {
+    if (ignoredKeys.has(d.key)) return false;
+    return (
+      d.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (d.symbolName && d.symbolName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      d.accountName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
 
   // ── Render ──
   const header = (
@@ -512,6 +514,7 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                           <th className="p-3 text-right">Amount</th>
                           <th className="p-3 text-right w-[120px]">Fee (Tax)</th>
                           <th className="p-3 text-left">Account</th>
+                          <th className="w-12 p-3 text-center"></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -556,6 +559,16 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                             </td>
                             <td className="p-3 text-sm text-muted-foreground">
                               {d.accountName}
+                            </td>
+                            <td className="p-3 text-center">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => addIgnoredKey(d.key)}
+                                title="Ignore this dividend"
+                              >
+                                <Icons.EyeOff className="h-4 w-4 text-muted-foreground" />
+                              </Button>
                             </td>
                           </tr>
                         ))}

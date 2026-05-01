@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { AddonContext } from '@wealthfolio/addon-sdk';
+import { useIgnoredItems } from '../hooks/useIgnoredItems';
 import {
   Badge,
   Button,
@@ -34,6 +35,7 @@ interface SettingsProps {
 function SettingsPage({ ctx }: SettingsProps) {
   const [taxExemptAccountIds, setTaxExemptAccountIds] = useState<Set<string>>(new Set());
   const [accounts, setAccounts] = useState<any[]>([]);
+  const { ignoredKeys, removeIgnoredKey } = useIgnoredItems();
 
   // Load accounts
   useEffect(() => {
@@ -143,6 +145,55 @@ function SettingsPage({ ctx }: SettingsProps) {
                       <strong>{taxExemptAccountIds.size}</strong> tax-exempt account(s) configured.
                       Dividends for these accounts will be imported with 0 tax.
                     </p>
+                  </div>
+                )}
+              </div>
+              </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Ignored Dividends</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Dividends you have chosen to ignore during scans. Restoring them will allow them to be detected again.
+                </p>
+                {ignoredKeys.size === 0 ? (
+                  <div className="text-sm text-muted-foreground py-4">
+                    No ignored dividends found.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {Array.from(ignoredKeys).map((key) => {
+                      const [symbol, accountId, date] = key.split('|');
+                      const account = accounts.find((a) => a.id === accountId);
+                      const accountName = account ? account.name : accountId;
+
+                      return (
+                        <div
+                          key={key}
+                          className="flex items-center justify-between rounded-lg border p-3"
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-medium">{symbol}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {accountName} • {date}
+                            </span>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => removeIgnoredKey(key)}
+                            title="Restore"
+                          >
+                            <Icons.Refresh className="mr-2 h-4 w-4" />
+                            Restore
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
