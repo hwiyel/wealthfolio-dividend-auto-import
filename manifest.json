@@ -1,7 +1,7 @@
 {
   "id": "dividend-assistant",
   "name": "Dividend Assistant",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "main": "dist/addon.js",
   "description": "Automatically detects missing dividend entries based on your holdings and ex-dividend dates.",
   "author": "hwiyel",
