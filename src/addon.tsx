@@ -35,6 +35,8 @@ import {
 import {
   computeMissingDividends,
   toActivityPayload,
+  utcToKstDate,
+  timestampToKstDate,
   type MissingDividend,
   type DividendEvent,
 } from './dividendLogic';
@@ -54,7 +56,8 @@ function fmt(n: number, currency: string, isFee = false) {
   }).format(n);
 }
 function fmtDate(iso: string) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, {
+  const dt = new Date(iso + 'T09:00:00');
+  return dt.toLocaleDateString('ko-KR', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -182,7 +185,9 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                 // Convert timestamp to YYYY-MM-DD if needed
                 let exDate = e.exDate || e.date;
                 if (typeof exDate === 'number') {
-                  exDate = new Date(exDate * 1000).toISOString().slice(0, 10);
+                  exDate = timestampToKstDate(exDate);
+                } else if (typeof exDate === 'string') {
+                  exDate = utcToKstDate(exDate);
                 }
 
                 // Korean stocks should be KRW, others default to USD
