@@ -10,6 +10,24 @@
 
 import type { Activity } from '@wealthfolio/addon-sdk';
 
+export function utcToKstDate(utcDate: string): string {
+  const dt = new Date(utcDate);
+  if (isNaN(dt.getTime())) {
+    return utcDate.slice(0, 10);
+  }
+  const kstDate = new Date(dt.getTime() + 9 * 60 * 60 * 1000);
+  return kstDate.toISOString().slice(0, 10);
+}
+
+export function timestampToKstDate(timestamp: number): string {
+  const dt = new Date(timestamp * 1000);
+  if (isNaN(dt.getTime())) {
+    return new Date().toISOString().slice(0, 10);
+  }
+  const kstDate = new Date(dt.getTime() + 9 * 60 * 60 * 1000);
+  return kstDate.toISOString().slice(0, 10);
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface DividendEvent {
@@ -94,7 +112,7 @@ function buildLotLedger(
 
     const delta = (a as any).activityType === 'BUY' ? quantity : -quantity;
     if (!ledger.has(symbol)) ledger.set(symbol, []);
-    ledger.get(symbol)!.push({ date: (a as any).date.slice(0, 10), shares: delta });
+    ledger.get(symbol)!.push({ date: utcToKstDate((a as any).date), shares: delta });
   }
 
   return ledger;
@@ -128,7 +146,7 @@ function buildExistingDividendKeys(activities: Activity[]): Set<string> {
   for (const a of activities) {
     const symbol = getActivitySymbol(a);
     if ((a as any).activityType === 'DIVIDEND' && symbol) {
-      const date = (a as any).date.slice(0, 10);
+      const date = utcToKstDate((a as any).date);
       keys.add(`${symbol}|${(a as any).accountId}|${date}`);
     }
   }
