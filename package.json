@@ -1,6 +1,6 @@
 {
   "name": "wealthfolio-dividend-auto-import-addon",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "A Wealthfolio addon for dividend-auto-import",
   "packageManager": "pnpm@10.33.0",
   "type": "module",
