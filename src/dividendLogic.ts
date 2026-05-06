@@ -102,7 +102,8 @@ function buildLotLedger(
         (a as any).accountId === accountId &&
         ((a as any).activityType === 'BUY' ||
           (a as any).activityType === 'SELL' ||
-          (a as any).activityType === 'TRANSFER') &&
+          (a as any).activityType === 'TRANSFER_IN' ||
+          (a as any).activityType === 'TRANSFER_OUT') &&
         getActivitySymbol(a)
     )
     .sort((a, b) => (a as any).date.localeCompare((b as any).date));
@@ -116,10 +117,8 @@ function buildLotLedger(
     const activityType = (a as any).activityType;
     if (activityType === 'BUY' || activityType === 'TRANSFER_IN') {
       delta = quantity;
-    } else if (activityType === 'SELL' || activityType === 'TRANSFER_OUT') {
-      delta = -quantity;
     } else {
-      delta = activityType === 'TRANSFER' ? quantity : 0;
+      delta = -quantity;
     }
 
     if (!ledger.has(symbol)) ledger.set(symbol, []);

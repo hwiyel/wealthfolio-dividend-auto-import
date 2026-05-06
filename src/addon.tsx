@@ -125,7 +125,10 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
       const filteredActivities = allActivities.filter(
         (a) =>
           targetIds.has(a.accountId) &&
-          (a.activityType === 'BUY' || a.activityType === 'SELL') &&
+          (a.activityType === 'BUY' ||
+            a.activityType === 'SELL' ||
+            a.activityType === 'TRANSFER_IN' ||
+            a.activityType === 'TRANSFER_OUT') &&
           ((a as any).assetSymbol || (a as any).symbol)
       );
 
