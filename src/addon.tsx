@@ -258,7 +258,20 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
   const handleLogSelected = () => {
     const toLog = missing.filter((d) => selected.has(d.key));
     if (toLog.length === 0) return;
-    logMutation.mutate(toLog);
+
+    // Build confirmation message with totals
+    const items = Object.entries(selectedTotalsByCurrency).map(([currency, totals]) => {
+      const net = totals.gross - totals.fee;
+      return `${fmt(totals.gross, currency)} → 세후 ${fmt(net, currency)}`;
+    }).join(', ');
+
+    const confirmed = window.confirm(
+      `${selected.size}개의 배당금을 기록하시겠습니까?\n\n총액: ${items}`
+    );
+
+    if (confirmed) {
+      logMutation.mutate(toLog);
+    }
   };
 
   // ── Row selection helpers ──
