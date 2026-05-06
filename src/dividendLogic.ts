@@ -2,7 +2,7 @@
  * dividendLogic.ts
  *
  * Core logic:
- *  1. Build a per-symbol holding ledger from BUY/SELL activities
+ *  1. Build a per-symbol holding ledger from BUY/SELL/TRANSFER activities
  *  2. Fetch ex-dividend events from Wealthfolio's Yahoo endpoint
  *  3. For each ex-date, compute how many shares were held at that moment
  *  4. Cross-check against existing DIVIDEND activities → emit only missing ones
@@ -100,7 +100,9 @@ function buildLotLedger(
     .filter(
       (a) =>
         (a as any).accountId === accountId &&
-        ((a as any).activityType === 'BUY' || (a as any).activityType === 'SELL') &&
+        ((a as any).activityType === 'BUY' ||
+          (a as any).activityType === 'SELL' ||
+          (a as any).activityType === 'TRANSFER') &&
         getActivitySymbol(a)
     )
     .sort((a, b) => (a as any).date.localeCompare((b as any).date));
@@ -110,7 +112,16 @@ function buildLotLedger(
     const quantity = getActivityQuantity(a);
     if (!symbol || quantity === undefined) continue;
 
-    const delta = (a as any).activityType === 'BUY' ? quantity : -quantity;
+    let delta: number;
+    const activityType = (a as any).activityType;
+    if (activityType === 'BUY' || activityType === 'TRANSFER_IN') {
+      delta = quantity;
+    } else if (activityType === 'SELL' || activityType === 'TRANSFER_OUT') {
+      delta = -quantity;
+    } else {
+      delta = activityType === 'TRANSFER' ? quantity : 0;
+    }
+
     if (!ledger.has(symbol)) ledger.set(symbol, []);
     ledger.get(symbol)!.push({ date: utcToKstDate((a as any).date), shares: delta });
   }
