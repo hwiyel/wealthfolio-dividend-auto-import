@@ -221,8 +221,6 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
       );
 
       setMissing(results);
-      // Pre-select all
-      setSelected(new Set(results.map((r) => r.key)));
       setScanned(true);
     } catch (err: any) {
       setScanError(err?.message ?? 'Unknown error during scan');
