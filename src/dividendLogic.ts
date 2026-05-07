@@ -277,6 +277,7 @@ export function toActivityPayload(
     currency: dividend.currency,
     fee: dividend.fee,
     amount: dividend.totalAmount,
+    comment: 'auto dividend',
     isDraft: false,
     isValid: true,
   };
