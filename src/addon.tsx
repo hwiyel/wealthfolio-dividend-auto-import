@@ -9,6 +9,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AddonContext, Activity } from '@wealthfolio/addon-sdk';
 import {
@@ -68,7 +69,7 @@ function fmtDate(iso: string) {
 
 function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
   const queryClient = useQueryClient();
-  const { ignoredKeys, addIgnoredKey } = useIgnoredItems();
+  const { ignoredKeys, addIgnoredKey } = useIgnoredItems(ctx);
 
   // ── Filter state ──
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
@@ -92,15 +93,17 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
 
   // ── Load tax-exempt settings ──
   React.useEffect(() => {
-    try {
-      const saved = localStorage.getItem('dividend-assistant-tax-exempt-accounts');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setTaxExemptAccountIds(new Set(parsed));
-      }
-    } catch (error) {
-      ctx.api.logger.error('Failed to load tax-exempt settings: ' + String(error));
-    }
+    (ctx.api as any).storage
+      .get('tax-exempt-accounts')
+      .then((saved: string | null) => {
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setTaxExemptAccountIds(new Set(parsed));
+        }
+      })
+      .catch((error: unknown) => {
+        ctx.api.logger.error('Failed to load tax-exempt settings: ' + String(error));
+      });
   }, [ctx]);
 
   // ── Scan logic ──
@@ -171,16 +174,8 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
               ctx.api.logger.debug(`[Dividend Assistant] fetchDividends exists: ${typeof (ctx.api.market as any).fetchDividends}`);
             }
 
-            // Try different API paths
-            if (ctx.api.market && typeof (ctx.api.market as any).fetchDividends === 'function') {
-              ctx.api.logger.info(`[Dividend Assistant] Using ctx.api.market.fetchDividends`);
-              events = await (ctx.api.market as any).fetchDividends(yahooSymbol);
-            } else if (typeof (ctx.api as any).fetchDividends === 'function') {
-              ctx.api.logger.info(`[Dividend Assistant] Using ctx.fetchDividends`);
-              events = await (ctx.api as any).fetchDividends(yahooSymbol);
-            } else {
-              ctx.api.logger.warn(`[Dividend Assistant] No fetchDividends function found`);
-            }
+            ctx.api.logger.info(`[Dividend Assistant] Using ctx.api.market.fetchDividends`);
+            events = await ctx.api.market.fetchDividends(yahooSymbol);
 
             if (Array.isArray(events) && events.length > 0) {
               // Map the API response to DividendEvent format
@@ -645,14 +640,6 @@ function StatusBadge({ count }: { count: number }) {
 export default function enable(ctx: AddonContext) {
   ctx.api.logger.info('Dividend Assistant: enabling');
 
-  const sidebarItem = ctx.sidebar.addItem({
-    id: 'dividend-assistant',
-    label: 'Dividends',
-    icon: <Icons.HandCoins className="h-5 w-5" />,
-    route: '/addons/dividend-assistant',
-    order: 50,
-  });
-
   // Create our own QueryClient to avoid version compatibility issues
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -663,36 +650,40 @@ export default function enable(ctx: AddonContext) {
     },
   });
 
+  let mainRoot: Root | null = null;
+  let settingsRoot: Root | null = null;
+
   ctx.router.add({
+    id: 'main',
     path: '/addons/dividend-assistant',
-    component: React.lazy(() =>
-      Promise.resolve({
-        default: () => (
-          <QueryClientProvider client={queryClient}>
+    render: ({ root: routeRoot }) => {
+      mainRoot ??= createRoot(routeRoot);
+      mainRoot.render(
+        <QueryClientProvider client={queryClient}>
           <DividendAssistantPage ctx={ctx} />
-          </QueryClientProvider>
-        ),
-      })
-    ),
+        </QueryClientProvider>
+      );
+    },
   });
 
   ctx.router.add({
+    id: 'settings',
     path: '/addons/dividend-assistant/settings',
-    component: React.lazy(() =>
-      Promise.resolve({
-        default: () => (
-          <QueryClientProvider client={queryClient}>
+    render: ({ root: routeRoot }) => {
+      settingsRoot ??= createRoot(routeRoot);
+      settingsRoot.render(
+        <QueryClientProvider client={queryClient}>
           <SettingsPage ctx={ctx} />
-          </QueryClientProvider>
-        ),
-      })
-    ),
+        </QueryClientProvider>
+      );
+    },
   });
 
-  return {
-    disable() {
-      sidebarItem.remove();
-      ctx.api.logger.info('Dividend Assistant: disabled');
-    },
-  };
+  ctx.onDisable(() => {
+    mainRoot?.unmount();
+    mainRoot = null;
+    settingsRoot?.unmount();
+    settingsRoot = null;
+    ctx.api.logger.info('Dividend Assistant: disabled');
+  });
 }

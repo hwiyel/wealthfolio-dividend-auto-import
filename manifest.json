@@ -1,17 +1,55 @@
 {
   "id": "dividend-assistant",
   "name": "Dividend Assistant",
-  "version": "3.0.1",
-  "main": "dist/addon.js",
+  "version": "3.6.1",
   "description": "Automatically detects missing dividend entries based on your holdings and ex-dividend dates.",
   "author": "hwiyel",
-  "sdkVersion": "3.2.0",
+  "main": "dist/addon.js",
+  "sdkVersion": "3.6.1",
+  "minWealthfolioVersion": "3.6.1",
+  "enabled": true,
+  "contributes": {
+    "routes": [
+      { "id": "main" },
+      { "id": "settings", "path": "settings" }
+    ],
+    "links": {
+      "sidebar": [
+        {
+          "id": "dividend-assistant",
+          "route": "main",
+          "label": "Dividends",
+          "icon": "hand-coins",
+          "order": 50
+        }
+      ]
+    }
+  },
   "permissions": [
-    { "name": "accounts.getAll", "category": "accounts", "purpose": "read", "functions": ["getAll"] },
-    { "name": "activities.getAll", "category": "activities", "purpose": "read", "functions": ["getAll"] },
-    { "name": "activities.saveMany", "category": "activities", "purpose": "write", "functions": ["saveMany"] },
-    { "name": "market.fetchDividends", "category": "market", "purpose": "read", "functions": ["fetchDividends"] },
-    { "name": "sidebar.addItem", "category": "ui", "purpose": "write", "functions": ["addItem"] },
-    { "name": "router.add", "category": "ui", "purpose": "write", "functions": ["add"] }
+    {
+      "category": "accounts",
+      "functions": ["getAll"],
+      "purpose": "Read accounts to filter holdings and display account details."
+    },
+    {
+      "category": "activities",
+      "functions": ["getAll", "checkImport", "import", "saveMany"],
+      "purpose": "Access transaction history to scan for missing dividends and import entries."
+    },
+    {
+      "category": "market-data",
+      "functions": ["fetchDividends"],
+      "purpose": "Fetch dividend history and calendar data from market data providers."
+    },
+    {
+      "category": "performance",
+      "functions": ["calculateHistory"],
+      "purpose": "Calculate historical stock return for chart visualization."
+    },
+    {
+      "category": "portfolio",
+      "functions": ["getHistoricalValuations"],
+      "purpose": "Retrieve historical valuations to combine with dividend data."
+    }
   ]
 }

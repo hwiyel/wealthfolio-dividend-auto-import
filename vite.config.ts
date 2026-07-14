@@ -1,7 +1,6 @@
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
-import externalGlobals from 'rollup-plugin-external-globals';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -15,19 +14,18 @@ export default defineConfig({
       formats: ['es'],
     },
     rollupOptions: {
-      external: ['react', 'react-dom'],
-      plugins: [
-        externalGlobals({
-          react: 'React',
-          'react-dom': 'ReactDOM'
-        })
+      external: [
+        '@tanstack/react-query',
+        '@wealthfolio/addon-sdk',
+        '@wealthfolio/ui',
+        'date-fns',
+        'lucide-react',
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'react/jsx-runtime',
+        'recharts',
       ],
-      output: {
-        globals: {
-          react: 'React',
-          'react-dom': 'ReactDOM',
-        },
-      },
     },
     outDir: 'dist',
     minify: false,

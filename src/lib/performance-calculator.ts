@@ -52,7 +52,7 @@ export async function getHistoricalTotalReturn(
   // 4. Merge performance returns with dividends
   // We need to fill in cumulative dividends for every date in performance returns
   let lastCumDiv = 0;
-  const merged: PerformanceDataPoint[] = performance.returns.map((ret) => {
+  const merged: PerformanceDataPoint[] = performance.series.map((ret: { date: string; value: number }) => {
     const dateStr = ret.date;
     // Update lastCumDiv if there's an entry for this date
     if (dividendMap.has(dateStr)) {

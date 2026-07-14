@@ -38,11 +38,11 @@ export async function getHistoricalTotalReturn(
         effectiveEndDate
       );
       
-      if (perf && perf.returns && perf.returns.length > 0) {
-        const totalGain = perf.gainLossAmount || 0;
-        const lastReturn = perf.returns[perf.returns.length - 1].value || 1;
+      if (perf && perf.series && perf.series.length > 0) {
+        const totalGain = perf.returns.valueReturn || 0;
+        const lastReturn = perf.series[perf.series.length - 1].value || 1;
         
-        valuations = perf.returns.map(r => ({
+        valuations = perf.series.map((r: { date: string; value: number }) => ({
           valuationDate: r.date,
           totalValueMinusContribution: lastReturn !== 0 ? totalGain * (r.value / lastReturn) : 0,
           isFromPerformance: true

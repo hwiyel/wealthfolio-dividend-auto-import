@@ -76,7 +76,7 @@ export function PerformanceChart({ data, currency }: PerformanceChartProps) {
               tickLine={false}
               tickMargin={10}
               minTickGap={30}
-              tickFormatter={(value) => {
+              tickFormatter={(value: string) => {
                 const date = new Date(value);
                 return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
               }}

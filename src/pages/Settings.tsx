@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from '@wealthfolio/ui';
 
-const STORAGE_KEY = 'dividend-assistant-tax-exempt-accounts';
+
 
 interface SettingsProps {
   ctx: AddonContext;
@@ -35,7 +35,7 @@ interface SettingsProps {
 function SettingsPage({ ctx }: SettingsProps) {
   const [taxExemptAccountIds, setTaxExemptAccountIds] = useState<Set<string>>(new Set());
   const [accounts, setAccounts] = useState<any[]>([]);
-  const { ignoredKeys, removeIgnoredKey } = useIgnoredItems();
+  const { ignoredKeys, removeIgnoredKey } = useIgnoredItems(ctx);
 
   // Load accounts
   useEffect(() => {
@@ -46,16 +46,18 @@ function SettingsPage({ ctx }: SettingsProps) {
 
   // Load saved settings
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setTaxExemptAccountIds(new Set(parsed));
-      }
-    } catch (error) {
-      ctx.api.logger.error('Failed to load tax-exempt settings: ' + String(error));
-    }
-  }, []);
+    (ctx.api as any).storage
+      .get('tax-exempt-accounts')
+      .then((saved: string | null) => {
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setTaxExemptAccountIds(new Set(parsed));
+        }
+      })
+      .catch((error: unknown) => {
+        ctx.api.logger.error('Failed to load tax-exempt settings: ' + String(error));
+      });
+  }, [ctx]);
 
   // Save settings when changed
   const handleToggleAccount = (accountId: string, checked: boolean) => {
@@ -67,12 +69,14 @@ function SettingsPage({ ctx }: SettingsProps) {
     }
     setTaxExemptAccountIds(newSet);
     
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([...newSet]));
-      ctx.api.logger.info('Tax-exempt accounts updated: ' + JSON.stringify([...newSet]));
-    } catch (error) {
-      ctx.api.logger.error('Failed to save tax-exempt settings: ' + String(error));
-    }
+    (ctx.api as any).storage
+      .set('tax-exempt-accounts', JSON.stringify([...newSet]))
+      .then(() => {
+        ctx.api.logger.info('Tax-exempt accounts updated: ' + JSON.stringify([...newSet]));
+      })
+      .catch((error: unknown) => {
+        ctx.api.logger.error('Failed to save tax-exempt settings: ' + String(error));
+      });
   };
 
   const header = (
