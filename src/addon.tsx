@@ -258,6 +258,7 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
     },
     onSuccess: () => {
       ctx.api.logger.info('Dividend Assistant: activities saved');
+      ctx.api.toast?.success?.('배당금이 성공적으로 기록되었습니다.');
       // Invalidate activities cache so the Activities page reflects changes
       queryClient.invalidateQueries({ queryKey: ['activities'] });
       queryClient.invalidateQueries({ queryKey: ['portfolio'] });
@@ -600,19 +601,6 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
                 {filteredMissing.length === 0 && missing.length > 0 && (
                   <div className="text-muted-foreground py-8 text-center">
                     No dividends match your search
-                  </div>
-                )}
-
-                {/* Success feedback */}
-                {logMutation.isSuccess && (
-                  <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
-                    <div className="flex items-center gap-2">
-                      <Icons.Check className="h-5 w-5" />
-                      <span className="font-medium">Success!</span>
-                    </div>
-                    <p className="mt-1 text-sm">
-                      Dividends logged successfully. Portfolio is being recalculated.
-                    </p>
                   </div>
                 )}
               </CardContent>
