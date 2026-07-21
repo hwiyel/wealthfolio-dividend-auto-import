@@ -229,16 +229,36 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
     mutationFn: async (toLog: MissingDividend[]) => {
       const payloads = toLog.map((d) => toActivityPayload(d));
 
-      // Check import first (only activities, no accountId)
+      // Check import first
       const checked = await (ctx.api.activities as any).checkImport(payloads);
+
+      // Verify validation status from checkImport
+      const invalidItems = (checked || []).filter((item: any) => item.isValid === false);
+      if (invalidItems.length > 0) {
+        const errorMsgs = invalidItems
+          .map((item: any) => {
+            const errs = item.errors ? Object.values(item.errors).flat().join(', ') : 'Validation error';
+            return `${item.symbol}: ${errs}`;
+          })
+          .join('; ');
+        throw new Error(`Import validation failed: ${errorMsgs}`);
+      }
 
       // Then import
       const imported = await (ctx.api.activities as any).import(checked);
+
+      if (!imported?.summary?.success || imported?.summary?.imported === 0) {
+        const msg =
+          imported?.summary?.errorMessage ||
+          `Failed to import dividends (0 of ${toLog.length} imported).`;
+        throw new Error(msg);
+      }
 
       return imported;
     },
     onSuccess: () => {
       ctx.api.logger.info('Dividend Assistant: activities saved');
+      ctx.api.toast?.success?.('배당금이 성공적으로 기록되었습니다.');
       // Invalidate activities cache so the Activities page reflects changes
       queryClient.invalidateQueries({ queryKey: ['activities'] });
       queryClient.invalidateQueries({ queryKey: ['portfolio'] });
@@ -254,20 +274,7 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
   const handleLogSelected = () => {
     const toLog = missing.filter((d) => selected.has(d.key));
     if (toLog.length === 0) return;
-
-    // Build confirmation message with totals
-    const items = Object.entries(selectedTotalsByCurrency).map(([currency, totals]) => {
-      const net = totals.gross - totals.fee;
-      return `${fmt(totals.gross, currency)} → 세후 ${fmt(net, currency)}`;
-    }).join(', ');
-
-    const confirmed = window.confirm(
-      `${selected.size}개의 배당금을 기록하시겠습니까?\n\n총액: ${items}`
-    );
-
-    if (confirmed) {
-      logMutation.mutate(toLog);
-    }
+    logMutation.mutate(toLog);
   };
 
   // ── Row selection helpers ──

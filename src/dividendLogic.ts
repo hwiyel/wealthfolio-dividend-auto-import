@@ -41,6 +41,7 @@ export interface DividendEvent {
 export interface MissingDividend {
   symbol: string;
   symbolName?: string;
+  assetId?: string;
   accountId: string;
   accountName: string;
   exDate: string;
@@ -187,13 +188,18 @@ export function computeMissingDividends(
   const existingKeys = buildExistingDividendKeys(allActivities);
   const results: MissingDividend[] = [];
 
-  // Map symbols to names from activities
+  // Map symbols to names and assetIds from activities
   const symbolNames = new Map<string, string>();
+  const symbolAssetIds = new Map<string, string>();
   for (const a of allActivities) {
     const symbol = getActivitySymbol(a);
     const name = getActivityName(a);
+    const assetId = (a as any).assetId;
     if (symbol && name) {
       symbolNames.set(symbol, name);
+    }
+    if (symbol && assetId) {
+      symbolAssetIds.set(symbol, assetId);
     }
   }
 
@@ -237,6 +243,7 @@ export function computeMissingDividends(
         results.push({
           symbol,
           symbolName: symbolNames.get(symbol),
+          assetId: symbolAssetIds.get(symbol),
           accountId: account.id,
           accountName: account.name,
           exDate: event.exDate,
@@ -257,7 +264,7 @@ export function computeMissingDividends(
 
 /**
  * Converts MissingDividend entries into the Activity shape that
- * ctx.api.activities.saveMany() expects.
+ * ctx.api.activities.import() expects.
  *
  * Wealthfolio DIVIDEND activity:
  *   quantity  = shares held
@@ -271,10 +278,13 @@ export function toActivityPayload(
     accountId: dividend.accountId,
     activityType: 'DIVIDEND',
     symbol: dividend.symbol,
+    assetId: dividend.assetId,
     date: dividend.exDate,
     quantity: dividend.sharesHeld,
     unitPrice: dividend.amountPerShare,
     currency: dividend.currency,
+    quoteCcy: dividend.currency,
+    instrumentType: 'EQUITY',
     fee: dividend.fee,
     amount: dividend.totalAmount,
     comment: 'auto dividend',
