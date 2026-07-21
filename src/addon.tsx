@@ -258,7 +258,6 @@ function DividendAssistantPage({ ctx }: { ctx: AddonContext }) {
     },
     onSuccess: () => {
       ctx.api.logger.info('Dividend Assistant: activities saved');
-      ctx.api.toast?.success?.('배당금이 성공적으로 기록되었습니다.');
       // Invalidate activities cache so the Activities page reflects changes
       queryClient.invalidateQueries({ queryKey: ['activities'] });
       queryClient.invalidateQueries({ queryKey: ['portfolio'] });
