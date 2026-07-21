@@ -79,14 +79,22 @@ function SettingsPage({ ctx }: SettingsProps) {
       });
   };
 
+  const handleBack = () => {
+    ctx.api.navigation.navigate('/addons/dividend-assistant').catch((err) => {
+      ctx.api.logger.error('Failed to navigate back: ' + String(err));
+      window.history.back();
+    });
+  };
+
   const header = (
     <PageHeader
       heading="Dividend Assistant Settings"
       text="Configure tax-exempt accounts for dividend imports."
+      onBack={handleBack}
       actions={
         <Button
           variant="outline"
-          onClick={() => ctx.api.navigation.navigate('/addons/dividend-assistant')}
+          onClick={handleBack}
         >
           <Icons.ArrowLeft className="mr-2 h-4 w-4" />
           Back
