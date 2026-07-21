@@ -82,7 +82,6 @@ function SettingsPage({ ctx }: SettingsProps) {
   const handleBack = () => {
     ctx.api.navigation.navigate('/addons/dividend-assistant').catch((err) => {
       ctx.api.logger.error('Failed to navigate back: ' + String(err));
-      window.history.back();
     });
   };
 

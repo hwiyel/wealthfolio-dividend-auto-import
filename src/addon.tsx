@@ -9,7 +9,6 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AddonContext, Activity } from '@wealthfolio/addon-sdk';
 import {
@@ -644,40 +643,27 @@ export default function enable(ctx: AddonContext) {
     },
   });
 
-  let mainRoot: Root | null = null;
-  let settingsRoot: Root | null = null;
-
   ctx.router.add({
     id: 'main',
     path: '/addons/dividend-assistant',
-    render: ({ root: routeRoot }) => {
-      mainRoot ??= createRoot(routeRoot);
-      mainRoot.render(
-        <QueryClientProvider client={queryClient}>
-          <DividendAssistantPage ctx={ctx} />
-        </QueryClientProvider>
-      );
-    },
-  });
+    component: (props: any) => (
+      <QueryClientProvider client={queryClient}>
+        <DividendAssistantPage ctx={ctx} {...props} />
+      </QueryClientProvider>
+    ),
+  } as any);
 
   ctx.router.add({
     id: 'settings',
     path: '/addons/dividend-assistant/settings',
-    render: ({ root: routeRoot }) => {
-      settingsRoot ??= createRoot(routeRoot);
-      settingsRoot.render(
-        <QueryClientProvider client={queryClient}>
-          <SettingsPage ctx={ctx} />
-        </QueryClientProvider>
-      );
-    },
-  });
+    component: (props: any) => (
+      <QueryClientProvider client={queryClient}>
+        <SettingsPage ctx={ctx} {...props} />
+      </QueryClientProvider>
+    ),
+  } as any);
 
   ctx.onDisable(() => {
-    mainRoot?.unmount();
-    mainRoot = null;
-    settingsRoot?.unmount();
-    settingsRoot = null;
     ctx.api.logger.info('Dividend Assistant: disabled');
   });
 }
